@@ -69,6 +69,45 @@ MOM_FOLDER = Path(r"c:\Users\ben.lu\OneDrive - shl-group.com\Documents\Privacy\p
 # Output Excel file — saved inside MOM_FOLDER
 OUTPUT_XLSX = MOM_FOLDER / "mon_rawtable.xlsx"
 
+# ── Text normalisation ────────────────────────────────────────────────────────
+# Maps Unicode symbols that appear in document content to ASCII equivalents.
+# Applied to every extracted text cell so the output Excel is plain-ASCII safe.
+
+_UNICODE_REPLACEMENTS = [
+    # Arrows
+    ("\u2192", "->"),   # → RIGHT ARROW
+    ("\u21D2", "->"),   # => RIGHTWARDS DOUBLE ARROW
+    ("\u27A1", "->"),   # -> BLACK RIGHTWARDS ARROW
+    ("\u2794", "->"),   # -> HEAVY WIDE-HEADED RIGHTWARDS ARROW
+    ("\u279C", "->"),   # -> HEAVY ROUND-TIPPED RIGHTWARDS ARROW
+    ("\u2190", "<-"),   # <- LEFT ARROW
+    ("\u2194", "<->"),  # <-> LEFT RIGHT ARROW
+    # Dashes / bullets
+    ("\u2013", "-"),    # en dash
+    ("\u2014", "--"),   # em dash
+    ("\u2022", "*"),    # bullet
+    ("\u25CF", "*"),    # black circle
+    # Checkboxes (keep as text label so content is readable)
+    ("\u2611", "[x]"),  # checked ballot box
+    ("\u2612", "[x]"),  # ballot box with X
+    ("\u2610", "[ ]"),  # empty ballot box
+    ("\u25A0", "[x]"),  # black square (filled checkbox)
+    ("\u25A1", "[ ]"),  # white square (empty checkbox)
+    ("\u25AA", "[x]"),  # black small square
+    # Misc
+    ("\u2026", "..."),  # ellipsis
+    ("\u00D7", "x"),    # multiplication sign
+    ("\u00B0", "deg"),  # degree sign
+]
+
+def _normalize(text: str) -> str:
+    """Replace known Unicode symbols with ASCII equivalents."""
+    for char, replacement in _UNICODE_REPLACEMENTS:
+        if char in text:
+            text = text.replace(char, replacement)
+    return text
+
+
 # ── Phase 1: Extract .docx files → Raw DataFrame ─────────────────────────────
 
 def extract_rows_from_docx(filepath: Path) -> list[dict]:
@@ -95,7 +134,7 @@ def extract_rows_from_docx(filepath: Path) -> list[dict]:
         tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
 
         if tag == "p":
-            text = "".join(run.text for run in child.iter(qn("w:t"))).strip()
+            text = _normalize("".join(run.text for run in child.iter(qn("w:t"))).strip())
             if text:
                 pStyle = child.find(".//" + qn("w:pStyle"))
                 style  = pStyle.get(qn("w:val")) if pStyle is not None else "Normal"
@@ -112,7 +151,7 @@ def extract_rows_from_docx(filepath: Path) -> list[dict]:
         elif tag == "tbl":
             for row_el in child.iter(qn("w:tr")):
                 cells = [
-                    "".join(t.text for t in cell_el.iter(qn("w:t"))).strip()
+                    _normalize("".join(t.text for t in cell_el.iter(qn("w:t"))).strip())
                     for cell_el in row_el.iter(qn("w:tc"))
                 ]
                 line = " | ".join(cells)
