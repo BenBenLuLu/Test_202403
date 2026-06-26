@@ -186,21 +186,29 @@ def df_to_text(file_df: pd.DataFrame) -> str:
 
 ANALYSIS_SYSTEM_PROMPT = """
 You are an expert manufacturing quality engineer and meeting analyst.
-Your task is to analyse a structured table of a Minutes of Meeting (MoM)
+Your task is to analyse the extracted text of a Minutes of Meeting (MoM)
 document related to mold tooling issues and return a JSON object with
 EXACTLY the following keys:
 
 {
-  "subject":        "<Meeting Subject or a concise title>",
-  "according_to":   "<Reported by / source name(s) found in the document>",
+  "subject":        "<Mold/tool name from Subject field, e.g. 'TM3A Molly Selma Rotator'>",
+  "according_to":   "<EAM or work-order reference, e.g. 'EAM N3 No.: 10612547'>",
   "problems":       "<The abnormal issue or symptom observed>",
-  "root_cause":     "<The analysed root cause of the issue>",
-  "mold_component": "<The mold component name>",
-  "part_number":    "<Part number or drawing number of the component, or N/A>",
+  "root_cause":     "<Root cause — look for a line starting with 'Root Cause:'>",
+  "mold_component": "<The mold component name, e.g. 'core pin', 'cavity insert'>",
+  "part_number":    "<Part number, drawing number or P/N code, or N/A>",
   "action_type":    "<MUST be one of: Replacement | Repair/Welding | Other>",
-  "solution":       "<Full solution implemented>",
+  "solution":       "<Solution — look for a line starting with 'Solutions:' or 'Solution:'>",
   "action":         "<Follow-up actions and responsible person(s)>"
 }
+
+Document format hints:
+- Header fields are in table rows as "Label: Value" (e.g. "Subject: TM3A ...").
+- Issue type (FOT/TS/Production) is shown with a filled square before the keyword (e.g. "■Production issue").
+- Agenda section starts with a paragraph beginning "Agenda:".
+- Root Cause section starts with "Root Cause:".
+- Solutions section starts with "Solutions:" or "Solution:".
+- Text may be a mix of English and Traditional Chinese.
 
 Rules:
 - All values must be concise plain text (no nested JSON, no Markdown).
