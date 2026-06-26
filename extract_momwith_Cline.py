@@ -62,8 +62,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 #   MOM_FOLDER = Path(r"C:\Users\ben.lu\OneDrive - shl-group.com\...\MoM")
 MOM_FOLDER = SCRIPT_DIR / "MoM"
 
-# ── Output Excel file (saved next to this script) ─────────────────────────────
-OUTPUT_XLSX = SCRIPT_DIR / "mom_table.xlsx"
+# ── Output files (both saved in SCRIPT_DIR by default) ───────────────────────
+OUTPUT_XLSX        = SCRIPT_DIR / "mom_table.xlsx"           # final summary
+PHASE1_XLSX        = SCRIPT_DIR / "mom_phase1_preview.xlsx"  # raw extraction
+
+# ── Run mode ──────────────────────────────────────────────────────────────────
+# Set PHASE1_ONLY = True to stop after Phase 1 (extraction) so you can
+# verify mom_phase1_preview.xlsx before running the Ollama AI step.
+PHASE1_ONLY = False
 
 # ── Ollama settings ───────────────────────────────────────────────────────────
 #
@@ -346,24 +352,45 @@ def main() -> None:
     print("=" * 70)
     print("  MoM Extraction & Analysis Pipeline  (Ollama / local LLM)")
     print("=" * 70)
-    print(f"  Model      : {OLLAMA_MODEL}")
-    print(f"  MoM folder : {MOM_FOLDER}")
-    print(f"  Output     : {OUTPUT_XLSX}")
+    print(f"  Mode            : {'PHASE 1 ONLY (no AI)' if PHASE1_ONLY else 'Full pipeline (Phase 1 + 2 + 3)'}")
+    print(f"  MoM folder      : {MOM_FOLDER}")
+    print(f"  Phase 1 preview : {PHASE1_XLSX}")
+    print(f"  Final output    : {OUTPUT_XLSX}")
     print()
-
-    _check_ollama_running()
 
     # ── Phase 1: Extract → Raw DataFrame ─────────────────────────────────────
     print("[Phase 1] Extracting .docx content into DataFrame …")
     raw_df = build_raw_dataframe(MOM_FOLDER)
-    total_rows = len(raw_df)
     n_files    = raw_df["Source_File"].nunique()
+    total_rows = len(raw_df)
     print(f"  ✓ {n_files} file(s) → {total_rows} rows extracted.\n")
-    print(raw_df.to_string(max_rows=10, max_colwidth=60))
+    print(raw_df.to_string(max_rows=15, max_colwidth=70))
     print()
 
+    # Always save the Phase 1 raw extraction so it can be reviewed
+    with pd.ExcelWriter(str(PHASE1_XLSX), engine="openpyxl") as writer:
+        raw_df.to_excel(writer, sheet_name="Phase1 Raw", index=False)
+        ws = writer.sheets["Phase1 Raw"]
+        ws.freeze_panes = "A2"
+        for col_idx, col_name in enumerate(raw_df.columns, start=1):
+            max_len = max(
+                len(str(col_name)),
+                raw_df[col_name].astype(str).map(len).max() if total_rows else 0,
+            )
+            ws.column_dimensions[
+                ws.cell(row=1, column=col_idx).column_letter
+            ].width = min(max_len + 4, 80)
+    print(f"  ✓ Phase 1 preview saved → {PHASE1_XLSX}")
+
+    if PHASE1_ONLY:
+        print("\n[Phase 1 only mode] Stopping here.")
+        print("  Open the preview file above, verify the extraction,")
+        print("  then set PHASE1_ONLY = False and re-run to continue.\n")
+        return
+
     # ── Phase 2: AI analysis per file ────────────────────────────────────────
-    print("[Phase 2] Analysing each file with Ollama …")
+    _check_ollama_running()
+    print("\n[Phase 2] Analysing each file with Ollama …")
     records: list[dict] = []
 
     for filename, file_df in raw_df.groupby("Source_File", sort=False):
@@ -387,7 +414,7 @@ def main() -> None:
     print()
 
     save_to_excel(summary_df, raw_df, OUTPUT_XLSX)
-    print(f"  ✓ Saved to: {OUTPUT_XLSX}")
+    print(f"  ✓ Saved → {OUTPUT_XLSX}")
     print(f"     Sheet 'Summary' : {len(summary_df)} row(s), 6 columns")
     print(f"     Sheet 'Raw'     : {len(raw_df)} row(s), 4 columns")
     print("\n[Done]")
