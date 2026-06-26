@@ -22,6 +22,12 @@ Usage (PowerShell on Windows):
     "C:\\Users\\ben.lu\\OneDrive - shl-group.com\\Documents\\Privacy\\python2\\Ben\\SHL\\Tool Assessment\\MoM extraction\\extract_momwith_Cline.py"
 """
 
+# =============================================================================
+# Last commit : bc9fcff  (2026-06-26 04:57:07 +0000)
+# Author      : Cursor Agent
+# Message     : Fix header/section parsing for actual MoM document structure
+# =============================================================================
+
 import sys
 import subprocess
 import json
@@ -191,15 +197,15 @@ document related to mold tooling issues and return a JSON object with
 EXACTLY the following keys:
 
 {
-  "subject":        "<Mold/tool name from Subject field, e.g. 'TM3A Molly Selma Rotator'>",
-  "according_to":   "<EAM or work-order reference, e.g. 'EAM N3 No.: 10612547'>",
-  "problems":       "<The abnormal issue or symptom observed>",
-  "root_cause":     "<Root cause — look for a line starting with 'Root Cause:'>",
-  "mold_component": "<The mold component name, e.g. 'core pin', 'cavity insert'>",
-  "part_number":    "<Part number, drawing number or P/N code, or N/A>",
-  "action_type":    "<MUST be one of: Replacement | Repair/Welding | Other>",
-  "solution":       "<Solution — look for a line starting with 'Solutions:' or 'Solution:'>",
-  "action":         "<Follow-up actions and responsible person(s)>"
+  "Subject":        "<Mold/tool name from Subject field, e.g. 'TM3A Molly Selma Rotator'>",
+  "According_To":   "<EAM or work-order reference, e.g. 'EAM N3 No.: 10612547'>",
+  "Problems":       "<The abnormal issue or symptom observed>",
+  "Root_Cause":     "<Root cause — look for a line starting with 'Root Cause:'>",
+  "Mold_Component": "<The mold component name, e.g. 'core pin', 'cavity insert'>",
+  "Part_Number":    "<Part number, drawing number or P/N code, or N/A>",
+  "Action_Type":    "<MUST be one of: Replacement | Repair/Welding | Other>",
+  "Solution":       "<Solution — look for a line starting with 'Solutions:' or 'Solution:'>",
+  "Action":         "<Follow-up actions and responsible person(s)>"
 }
 
 Document format hints:
@@ -283,20 +289,20 @@ def analyse_file_df(filename: str, file_df: pd.DataFrame) -> dict[str, str]:
         data = {}
 
     defaults = {
-        "subject": filename, "according_to": "N/A", "problems": "N/A",
-        "root_cause": "N/A", "mold_component": "N/A", "part_number": "N/A",
-        "action_type": "N/A", "solution": "N/A", "action": "N/A",
+        "Subject": filename, "According_To": "N/A", "Problems": "N/A",
+        "Root_Cause": "N/A", "Mold_Component": "N/A", "Part_Number": "N/A",
+        "Action_Type": "N/A", "Solution": "N/A", "Action": "N/A",
     }
     for k, v in defaults.items():
         data.setdefault(k, v)
 
     # Merge component details into the Solution cell
-    comp   = data.get("mold_component", "N/A")
-    part   = data.get("part_number",    "N/A")
-    atype  = data.get("action_type",    "N/A")
-    sol    = data.get("solution",       "N/A")
+    comp   = data.get("Mold_Component", "N/A")
+    part   = data.get("Part_Number",    "N/A")
+    atype  = data.get("Action_Type",    "N/A")
+    sol    = data.get("Solution",       "N/A")
     if comp != "N/A" or part != "N/A":
-        data["solution"] = (
+        data["Solution"] = (
             f"{sol} [Component: {comp}, Part No.: {part}, Action: {atype}]"
         )
 
@@ -307,12 +313,12 @@ def analyse_file_df(filename: str, file_df: pd.DataFrame) -> dict[str, str]:
 # -- Phase 3: Build summary DataFrame and export to Excel ---------------------
 
 SUMMARY_COLUMNS = {
-    "subject":      "Subject",
-    "according_to": "According to",
-    "problems":     "Problems",
-    "root_cause":   "Root Cause",
-    "solution":     "Solution",
-    "action":       "Action",
+    "Subject":      "Subject",
+    "According_To": "According to",
+    "Problems":     "Problems",
+    "Root_Cause":   "Root Cause",
+    "Solution":     "Solution",
+    "Action":       "Action",
 }
 
 
@@ -450,8 +456,8 @@ def main() -> None:
         print(f"  -> {filename}  ({len(file_df)} rows fed to AI)")
         record = analyse_file_df(str(filename), file_df)
         records.append(record)
-        rc = record["root_cause"]
-        print(f"     Subject   : {record['subject']}")
+        rc = record["Root_Cause"]
+        print(f"     Subject   : {record['Subject']}")
         print(f"     Root Cause: {rc[:90]}{'...' if len(rc) > 90 else ''}")
 
     print(f"\n  [OK] Analysed {len(records)} file(s).\n")
