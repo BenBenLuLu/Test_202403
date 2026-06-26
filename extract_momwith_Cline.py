@@ -76,9 +76,7 @@ import pandas as pd   # noqa: E402
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 # -- Path to the MoM folder ----------------------------------------------------
-# Change the line below to your actual folder path, e.g.:
-#   MOM_FOLDER = Path(r"C:\Users\ben.lu\OneDrive - shl-group.com\...\MoM")
-MOM_FOLDER = SCRIPT_DIR / "MoM"
+MOM_FOLDER = Path(r"c:\Users\ben.lu\OneDrive - shl-group.com\Documents\Privacy\python2\Ben\SHL\Tool Assessment\MoM extraction\MoM")
 
 # -- Output files (both saved in SCRIPT_DIR by default) -----------------------
 OUTPUT_XLSX        = SCRIPT_DIR / "mom_table.xlsx"           # final summary
@@ -203,35 +201,41 @@ def df_to_text(file_df: pd.DataFrame) -> str:
 # -- Phase 2: AI analysis via Ollama ------------------------------------------
 
 ANALYSIS_SYSTEM_PROMPT = """
-You are an expert manufacturing quality engineer and meeting analyst.
-Your task is to analyse the extracted text of a Minutes of Meeting (MoM)
-document related to mold tooling issues and return a JSON object with
-EXACTLY the following keys:
+You are an expert manufacturing quality engineer analysing a mold-tooling
+Minutes of Meeting (MoM) document.
+
+IMPORTANT: This document does NOT necessarily use "Root Cause:" or
+"Solutions:" as section headings.  ALL information may be written as plain
+paragraphs, inside table cells, or mixed Chinese/English text.
+You MUST read every line and USE YOUR ENGINEERING REASONING to infer answers.
+
+Return a JSON object with EXACTLY these keys:
 
 {
-  "Subject":        "<Mold/tool name from Subject field, e.g. 'TM3A Molly Selma Rotator'>",
-  "According_To":   "<EAM or work-order reference, e.g. 'EAM N3 No.: 10612547'>",
-  "Problems":       "<The abnormal issue or symptom observed>",
-  "Root_Cause":     "<Root cause — look for a line starting with 'Root Cause:'>",
-  "Mold_Component": "<The mold component name, e.g. 'core pin', 'cavity insert'>",
-  "Part_Number":    "<Part number, drawing number or P/N code, or N/A>",
-  "Action_Type":    "<MUST be one of: Replacement | Repair/Welding | Other>",
-  "Solution":       "<Solution — look for a line starting with 'Solutions:' or 'Solution:'>",
-  "Action":         "<Follow-up actions and responsible person(s)>"
+  "Subject":        "<Mold or tool name — from the 'Subject:' header cell>",
+  "According_To":   "<EAM number, work-order, or source reference found in the text>",
+  "Problems":       "<What went wrong? The abnormal symptom or defect observed>",
+  "Root_Cause":     "<WHY did it happen? Infer from context: wear, crack, fatigue, contamination, design error, etc.>",
+  "Mold_Component": "<Which mold part is affected? e.g. core pin, cavity insert, gate, slider, lifter>",
+  "Part_Number":    "<Part number, P/N, or drawing number of the affected component, or N/A>",
+  "Action_Type":    "<One of: Replacement | Repair/Welding | Other>",
+  "Solution":       "<What was done to fix it? Action taken or planned>",
+  "Action":         "<Who is responsible and what are the follow-up steps?>"
 }
 
-Document format hints:
-- Header fields are in table rows as "Label: Value" (e.g. "Subject: TM3A ...").
-- Issue type (FOT/TS/Production) is shown with a filled square before the keyword (e.g. "■Production issue").
-- Agenda section starts with a paragraph beginning "Agenda:".
-- Root Cause section starts with "Root Cause:".
-- Solutions section starts with "Solutions:" or "Solution:".
-- Text may be a mix of English and Traditional Chinese.
+How to find the information (the document may use any of these formats):
+- Table rows often hold: Problem | Root Cause | Solution | Action | PIC
+- Paragraphs after 'Agenda:' describe the issue
+- 'According to EAM N3 No.:' or similar text gives the reference number
+- Filled checkbox (■) before FOT/TS/Production identifies issue type
+- Text may be Traditional Chinese — translate when needed
 
-Rules:
-- All values must be concise plain text (no nested JSON, no Markdown).
-- If a field cannot be determined from the text, use the string N/A.
-- Return ONLY the raw JSON object - no explanation, no code fences.
+Inference rules:
+- If no explicit root cause is stated, reason from the problem description
+- If no explicit solution is stated, look for action items, PIC assignments,
+  or any mention of replacement / repair / welding
+- Use N/A only when there is truly zero relevant information
+- Return ONLY the raw JSON object — no explanation, no code fences
 """.strip()
 
 ANALYSIS_USER_TEMPLATE = """
