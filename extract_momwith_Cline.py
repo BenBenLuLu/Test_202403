@@ -64,7 +64,8 @@ MOM_FOLDER = SCRIPT_DIR / "MoM"
 
 # -- Output files (both saved in SCRIPT_DIR by default) -----------------------
 OUTPUT_XLSX        = SCRIPT_DIR / "mom_table.xlsx"           # final summary
-PHASE1_XLSX        = SCRIPT_DIR / "mom_phase1_preview.xlsx"  # raw extraction
+PHASE1_XLSX        = SCRIPT_DIR / "mom_phase1_preview.xlsx"  # raw extraction (legacy)
+MON_RAW_XLSX       = SCRIPT_DIR / "mon_rawtable.xlsx"        # raw table (Source_File|Seq|Type|Style|Content)
 
 # -- Run mode ------------------------------------------------------------------
 # Set PHASE1_ONLY = True to stop after Phase 1 (extraction) so you can
@@ -90,8 +91,11 @@ def extract_rows_from_docx(filepath: Path) -> list[dict]:
     Walk the XML body of a .docx file in document order and return a list
     of dicts, one per paragraph or table row:
 
-        {"source_file": str, "seq": int, "type": "paragraph"|"table_row",
-         "content": str}
+        {"source_file": str, "seq": int, "type": str,
+         "style": str, "content": str}
+
+    'style' for paragraphs = the Word paragraph style name (e.g. "Heading1",
+    "Normal", "ListParagraph").  For table rows it is always "table".
     """
     from docx.oxml.ns import qn  # noqa: PLC0415
 
@@ -105,10 +109,13 @@ def extract_rows_from_docx(filepath: Path) -> list[dict]:
         if tag == "p":
             text = "".join(run.text for run in child.iter(qn("w:t"))).strip()
             if text:
+                pStyle = child.find(".//" + qn("w:pStyle"))
+                style  = pStyle.get(qn("w:val")) if pStyle is not None else "Normal"
                 rows.append({
                     "source_file": filepath.name,
                     "seq":         seq,
                     "type":        "paragraph",
+                    "style":       style,
                     "content":     text,
                 })
                 seq += 1
@@ -125,6 +132,7 @@ def extract_rows_from_docx(filepath: Path) -> list[dict]:
                         "source_file": filepath.name,
                         "seq":         seq,
                         "type":        "table_row",
+                        "style":       "table",
                         "content":     line,
                     })
                     seq += 1
@@ -136,7 +144,7 @@ def build_raw_dataframe(mom_folder: Path) -> pd.DataFrame:
     """
     Load all .docx files in *mom_folder* and return a combined DataFrame:
 
-        Source_File | Seq | Type | Content
+        Source_File | Seq | Type | Style | Content
     """
     if not mom_folder.exists():
         raise FileNotFoundError(
@@ -156,19 +164,21 @@ def build_raw_dataframe(mom_folder: Path) -> pd.DataFrame:
         except Exception as exc:  # noqa: BLE001
             print(f"  [Phase 1] WARNING - could not read '{fp.name}': {exc}")
 
-    df = pd.DataFrame(all_rows, columns=["source_file", "seq", "type", "content"])
-    df.columns = ["Source_File", "Seq", "Type", "Content"]
+    df = pd.DataFrame(all_rows, columns=["source_file", "seq", "type", "style", "content"])
+    df.columns = ["Source_File", "Seq", "Type", "Style", "Content"]
     return df
 
 
 def df_to_text(file_df: pd.DataFrame) -> str:
     """
     Convert a single file's DataFrame rows into a numbered plain-text block
-    that the AI can read easily.
+    that the AI can read easily.  Includes the Style hint so the model can
+    identify headings.
     """
     lines = []
     for _, row in file_df.iterrows():
-        lines.append(f"[{row['Seq']}] ({row['Type']})  {row['Content']}")
+        style_hint = f"|{row['Style']}" if row.get("Style", "Normal") not in ("Normal", "table", "") else ""
+        lines.append(f"[{row['Seq']}] ({row['Type']}{style_hint})  {row['Content']}")
     return "\n".join(lines)
 
 
@@ -346,6 +356,37 @@ def _check_ollama_running() -> None:
         sys.exit(1)
 
 
+# -- Raw table export helper ---------------------------------------------------
+
+def _save_raw_table(df: pd.DataFrame, path: Path) -> None:
+    """Save the Phase 1 raw DataFrame to an Excel file with auto-fit columns
+    and wrap-text on the Content column."""
+    from openpyxl.styles import Font, PatternFill  # noqa: PLC0415
+    with pd.ExcelWriter(str(path), engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Raw Table", index=False)
+        ws = writer.sheets["Raw Table"]
+        ws.freeze_panes = "A2"
+        # Blue header
+        hdr_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        hdr_font = Font(bold=True, color="FFFFFF")
+        for cell in ws[1]:
+            cell.fill = hdr_fill
+            cell.font = hdr_font
+        # Column widths + wrap Content
+        content_col = list(df.columns).index("Content") + 1
+        for ci, cn in enumerate(df.columns, start=1):
+            ml = max(len(str(cn)),
+                     df[cn].astype(str).map(len).max() if len(df) else 0)
+            ws.column_dimensions[
+                ws.cell(row=1, column=ci).column_letter
+            ].width = min(ml + 4, 80)
+            if ci == content_col:
+                for ri in range(2, len(df) + 2):
+                    ws.cell(row=ri, column=ci).alignment = \
+                        __import__("openpyxl").styles.Alignment(
+                            wrap_text=True, vertical="top")
+
+
 # -- Main orchestration --------------------------------------------------------
 
 def main() -> None:
@@ -381,6 +422,10 @@ def main() -> None:
                 ws.cell(row=1, column=col_idx).column_letter
             ].width = min(max_len + 4, 80)
     print(f"  [OK] Phase 1 preview saved -> {PHASE1_XLSX}")
+
+    # Save the raw table as mon_rawtable.xlsx (Source_File | Seq | Type | Style | Content)
+    _save_raw_table(raw_df, MON_RAW_XLSX)
+    print(f"  [OK] Raw table saved      -> {MON_RAW_XLSX}")
 
     if PHASE1_ONLY:
         print("\n[Phase 1 only mode] Stopping here.")
