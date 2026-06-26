@@ -29,11 +29,23 @@ Usage (PowerShell on Windows):
 # =============================================================================
 
 import sys
+import io
 import subprocess
 import json
 import re
 from pathlib import Path
 from datetime import datetime
+
+# Make stdout safe on terminals with limited encodings (cp950, cp936, etc.)
+# Any character that cannot be encoded is replaced with '?' instead of crashing.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+else:
+    sys.stdout = io.TextIOWrapper(
+        sys.stdout.buffer,
+        encoding=sys.stdout.encoding or "utf-8",
+        errors="replace",
+    )
 
 # -- Dependency auto-install ---------------------------------------------------
 
